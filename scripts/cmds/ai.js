@@ -1,66 +1,70 @@
-const { getPrefix, getStreamFromURL, uploadImgbb } = global.utils;
-async function ai({ message: m, event: e, args: a, usersData: u }) {
-  var p = [`${await getPrefix(e.threadID)}${this.config.name}`,
-`${this.config.name}`
-/*"ai","Athena"
-*you can add more prefix here
-*/
-]; 
- if (p.some(b => a[0].toLowerCase().startsWith(b))) {
-try {      
-let prompt = "";
-if (e.type === "message_reply" && e.messageReply.attachments && e.messageReply.attachments[0]?.type === "photo") {
- const b = await uploadImgbb(e.messageReply.attachments[0].url);
-prompt = a.slice(1).join(" ") + ' ' + b.image.url;
-} else {
- prompt = a.slice(1).join(" ");
-}
- var __ = [{ id: e.senderID, tag: await u.getName(e.senderID) }];
- const r = await require("axios").post(`https://test-ai-ihc6.onrender.com/api`, {
-  prompt: prompt,
- apikey: "GayKey-oWHmMb1t8ASljhpgSSUI",
-  name: __[0]['tag'],
- id: __[0]['id'],
- });
-var _ = r.data.result.replace(/{name}/g, __[0]['tag']).replace(/{pn}/g, p[0]);
- if (r.data.av) {
- if (Array.isArray(r.data.av)) {
- const avs = r.data.av.map(url => getStreamFromURL(url));
- const avss = await Promise.all(avs);
-  m.reply({
- body: _,
- mentions: __,
- attachment: avss
- });
- } else {
- m.reply({
- body: _,
- mentions: __,
-attachment: await getStreamFromURL(r.data.av)
-  });
-  }
-  } else {
-m.reply({
-body: _,
-mentions: __
-  });
-  }
-  } catch (error) {
- m.reply("Error " + error);
- }
- }
-}
 module.exports = {
-config: {
- name: "ai",
-aliases: ["Athena"],
-version: 1.6,
-author: "Jun",
-role: 0,
- shortDescription: "An AI that can do various tasks",
- guide: "{pn} <query>",
- category: "AI",
- },
- onStart: function() {},
- onChat: ai
+  config: {
+    name: "ai",
+    version: "1.0",
+    author: "Jay",
+    countDown: 0,
+    role: 0,
+    shortDescription: "Chat with AI.",
+    longDescription: "Chat with AI",
+    category: "ai",
+    guide: {
+      en: "'{pn} ai'"
+    }
+  },
+  onStart: async function ({ api, event, args }) {
+    const fs = require('fs');
+    const axios = require('axios');
+
+    const input = args.join(" ");
+    const botID = api.getCurrentUserID();
+    const botData = await api.getUserInfo(botID);
+    const sender = event.type === "message_reply" ? event.messageReply.senderID : event.senderID;
+    const userInfo = await api.getUserInfo(sender);
+    const userName = userInfo[sender].name;
+    const botName = botData[botID].name;
+    const replyMessage = (event.type === "message_reply" && event.messageReply) ? event.messageReply.body : "No reply message available";
+    const userMessages = event.type === "message" ? input : `${userName}: ${replyMessage}\n${input}`;
+
+    if (input.length < 2) {
+      const responses = [
+        "Please provide a question.",
+        "No prompt provided.",
+        "Please ask a question."
+      ];
+      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+      api.sendMessage(randomResponse, event.threadID, event.messageID);
+      return;
+    }
+
+    if (event.type === "message_reply" && event.messageReply.attachments && event.messageReply.attachments[0]?.type === "photo") {
+      const attachment = event.messageReply.attachments[0];
+      const { url } = attachment;
+
+      try {
+        const b = await uploadImgbb(url);
+        input += ' ' + b.image.url;
+      } catch (error) {
+        api.sendMessage("Failed to upload image.", event.threadID, event.messageID);
+        return;
+      }
+    }
+
+    try {
+      const response = await axios.get(`https://hercai.onrender.com/v3/hercai?question=${encodeURIComponent(input)}`);
+      const message = response.data.reply;
+      api.sendMessage(message, event.threadID, event.messageID);
+    } catch (error) {
+      if (error.response) {
+        console.log(error.response.status);
+        console.log(error.response.data);
+        if (error.response.status == 401 && error.response.data.error.message.startsWith("You didn't provide an API key")) {
+          api.sendMessage("API-Key is missing.", event.threadID, event.messageID);
+        }
+      } else {
+        console.log(error.message);
+        api.sendMessage(error.message, event.threadID, event.messageID);
+      }
+    }
+  }
 };
